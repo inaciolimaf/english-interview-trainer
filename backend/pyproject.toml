@@ -1,0 +1,44 @@
+[project]
+name = "english-interview-trainer"
+version = "0.1.0"
+description = "Local voice-based English interview trainer"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "pydantic-settings>=2.3",
+    "httpx>=0.27",
+    "openai>=1.40",
+    "python-multipart>=0.0.9",
+    "pypdf>=5.0",
+]
+
+[project.optional-dependencies]
+# Heavy AI stack used by the model server and the spike script.
+models = [
+    "torch>=2.4",
+    "torchaudio>=2.4",
+    "faster-whisper>=1.1",
+    "transformers>=4.44",
+    "kokoro>=0.9",
+    "soundfile>=0.12",
+    "onnxruntime>=1.18",
+    "phonemizer>=3.3",
+    "numpy>=1.26",
+    "nvidia-ml-py>=12.0",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "honcho>=2.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools]
+packages = []
