@@ -11,6 +11,7 @@ Documento-base compartilhado por todas as specs. Contém as decisões fixas, a a
 | 3 | [03-interview-engine.md](03-interview-engine.md) | Currículo, vagas, prompts, roteiros, estilos, tempo | 🟨 |
 | 4 | [04-analysis-feedback.md](04-analysis-feedback.md) | Pronúncia por fonema, calibração, gramática/técnico, feedback, clipes | 🟨 |
 | 5 | [05-reports-drills.md](05-reports-drills.md) | Relatório da sessão, painel de evolução, explorador de erros, drills (SRS) | 🟨 |
+| 6 | [06-frontend-redesign.md](06-frontend-redesign.md) | Redesenho e conclusão do frontend (identidade visual, histórico, biblioteca de drills) | 🟨 |
 
 Legenda: ⬜ não iniciado · 🟨 em andamento · ✅ concluído. **Implemente na ordem**: cada spec depende das anteriores.
 
@@ -25,6 +26,7 @@ Legenda: ⬜ não iniciado · 🟨 em andamento · ✅ concluído. **Implemente 
 | 6, 9 | 03-interview-engine |
 | 8, 10.1–10.3 | 04-analysis-feedback |
 | 10.4, 11, 12 | 05-reports-drills |
+| 16 | 06-frontend-redesign |
 
 ---
 

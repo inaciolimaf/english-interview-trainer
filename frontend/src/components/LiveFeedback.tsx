@@ -1,16 +1,10 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import type { LiveFeedbackItem } from "../realtime/protocol";
+import { KIND_LABEL } from "./ErrorCard";
+import Icon from "./Icon";
 
-const KIND_LABEL: Record<LiveFeedbackItem["kind"], string> = {
-  pronunciation: "Pronunciation",
-  grammar: "Grammar",
-  technical: "Technical",
-  fluency: "Fluency",
-  vocabulary: "Vocabulary",
-};
-
-/** Text-only cards for the last analyzed answer (section 10.2): silent, never interrupts. */
+/** Text-only notes on the last analyzed answer (section 10.2): silent, never interrupts. */
 export default function LiveFeedback({ items, onClose }: { items: LiveFeedbackItem[]; onClose: () => void }) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const visible = items.filter((i) => !dismissed.has(i.error_id));
@@ -30,25 +24,29 @@ export default function LiveFeedback({ items, onClose }: { items: LiveFeedbackIt
   };
 
   return (
-    <aside className="live-feedback" aria-label="Feedback on your last answer" aria-live="polite">
+    <aside className="live-feedback" aria-label="Notes on your last answer" aria-live="polite">
       <header>
-        <span className="small muted">Last answer</span>
-        <button className="link" onClick={onClose} aria-label="Hide feedback">
-          Hide
+        <h3>On your last answer</h3>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Hide notes">
+          <Icon name="close" size={16} />
         </button>
       </header>
       {visible.map((item) => (
-        <div key={item.error_id} className={`fb-card sev-${item.severity}`}>
-          <span className="fb-kind">{KIND_LABEL[item.kind]}</span>
+        <div key={item.error_id} className={`fb-note sev-${item.severity}`}>
+          <span className="fb-kind">
+            <span className={`kind-dot kind-${item.kind}`} />
+            {KIND_LABEL[item.kind]}
+            {item.word && <> · <span className="spoken">{item.word}</span></>}
+          </span>
           {item.kind !== "pronunciation" && item.original_text && (
-            <p className="fb-diff">
-              <s>{item.original_text}</s>
-              {item.corrected_text && <> → <strong>{item.corrected_text}</strong></>}
-            </p>
+            <div className="said compact">
+              <p className="said-wrong">{item.original_text}</p>
+              {item.corrected_text && <p className="said-right">{item.corrected_text}</p>}
+            </div>
           )}
-          <p>{item.explanation}</p>
+          {item.explanation && <p>{item.explanation}</p>}
           {item.kind === "pronunciation" && (
-            <button className="link small" onClick={() => notAnError(item.error_id)}>
+            <button type="button" className="btn ghost small" onClick={() => notAnError(item.error_id)}>
               Not an error
             </button>
           )}

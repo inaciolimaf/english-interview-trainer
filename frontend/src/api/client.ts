@@ -218,6 +218,25 @@ export interface SessionCreate {
   feedback_mode?: FeedbackMode;
 }
 
+/** What the interview covers (interview_sessions.plan); the keys depend on the type. */
+export interface SessionPlan {
+  problem_id?: string;
+  problem_title?: string;
+  problem_statement?: string;
+  deep_dives?: string[];
+  stack?: string[];
+  stack_source?: "job" | "resume" | "none";
+  areas?: string[];
+  themes?: string[];
+  anchor_projects?: { name: string | null; description: string | null; impact: string | null }[];
+}
+
+export interface User {
+  id: string;
+  display_name: string;
+  email: string | null;
+}
+
 export interface Session {
   id: string;
   type: SessionType;
@@ -230,7 +249,7 @@ export interface Session {
   ended_at: string | null;
   job_posting_id: string | null;
   resume_id: string | null;
-  plan: Record<string, unknown> | null;
+  plan: SessionPlan | null;
   report: Report | null;
   scores: Scores | null;
   turns?: Turn[];
@@ -305,6 +324,8 @@ async function streamText(path: string, body: unknown, onChunk: (text: string) =
 
 export const api = {
   health: () => request<Health>("/health"),
+  me: () => request<User>("/users/me"),
+  listSessions: (limit = 100) => request<Session[]>(`/sessions?limit=${limit}`),
   createSession: (body: SessionCreate) =>
     request<Session>("/sessions", { method: "POST", body: JSON.stringify(body) }),
   listResumes: () => request<Resume[]>("/resumes"),
@@ -328,11 +349,12 @@ export const api = {
   coachSend: (id: string, message: string | null, onChunk: (t: string) => void) =>
     streamText(`/sessions/${id}/coach`, { message }, onChunk),
   coachReset: (id: string) => request<void>(`/sessions/${id}/coach`, { method: "DELETE" }),
-  speak: async (text: string): Promise<Blob> => {
+  /** Interviewer voice; `voice`/`speed` override the saved settings (settings preview). */
+  speak: async (text: string, opts: { voice?: string; speed?: number } = {}): Promise<Blob> => {
     const res = await fetch("/api/speech/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, ...opts }),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.blob();

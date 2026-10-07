@@ -3,17 +3,16 @@ import { Link, useParams } from "react-router-dom";
 import { api, type CoachMessage, type ErrorItem, type Session } from "../api/client";
 import { Recorder } from "../audio/recorder";
 import { playClip } from "../components/clip";
+import { errorText, readFlag as readStored, TYPE_LABEL, writeFlag } from "../components/format";
+import Icon from "../components/Icon";
+import LevelMeter from "../components/LevelMeter";
 import { speak, stopSpeaking } from "../components/speech";
 
 const QUICK_REPLIES = ["Next point", "Explain that more simply", "Give me an exercise", "Show me a better answer"];
 const READ_ALOUD_KEY = "eit.coachReadAloud";
 
 function readFlag(): boolean {
-  try {
-    return localStorage.getItem(READ_ALOUD_KEY) === "1";
-  } catch {
-    return false;
-  }
+  return readStored(READ_ALOUD_KEY) === "1";
 }
 
 /** Inline: **bold**, *italic*, [[clip:id]] (their recording), [[say:text]] (hear it right). */
@@ -27,16 +26,16 @@ function inline(text: string, clips: Map<string, string>, key: string): ReactNod
     if (clip) {
       const url = clips.get(clip[1]);
       return url ? (
-        <button key={k} className="chip-button" onClick={() => playClip(url)} title="Hear your recording">
-          ▶ your voice
+        <button key={k} type="button" className="inline-audio yours" onClick={() => playClip(url)} title="Hear your recording">
+          <Icon name="play" size={12} /> your voice
         </button>
       ) : null;
     }
     const say = part.match(/^\[\[say:([^\]]+)\]\]$/);
     if (say) {
       return (
-        <button key={k} className="chip-button say" onClick={() => void speak(say[1])} title="Hear it said correctly">
-          🔊 “{say[1].trim()}”
+        <button key={k} type="button" className="inline-audio say" onClick={() => void speak(say[1])} title="Hear it said correctly">
+          <Icon name="speaker" size={14} /> <span className="spoken">{say[1].trim()}</span>
         </button>
       );
     }
@@ -102,7 +101,7 @@ export default function Coach() {
       setMessages((m) => [...m, { role: "assistant", content: full }]);
       if (readAloudRef.current) void speak(full);
     } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
+      setError(errorText(e));
     } finally {
       setStreaming(null);
     }
@@ -126,7 +125,7 @@ export default function Coach() {
           void send(null); // start the debrief right away
         }
       } catch (e) {
-        if (!cancelled) setError(String(e instanceof Error ? e.message : e));
+        if (!cancelled) setError(errorText(e));
       }
     })();
     return () => {
@@ -144,11 +143,7 @@ export default function Coach() {
     const next = !readAloud;
     setReadAloud(next);
     if (!next) stopSpeaking();
-    try {
-      localStorage.setItem(READ_ALOUD_KEY, next ? "1" : "0");
-    } catch {
-      // per-viewer convenience only
-    }
+    writeFlag(READ_ALOUD_KEY, next ? "1" : "0");
   };
 
   const submit = (e: React.FormEvent) => {
@@ -166,7 +161,7 @@ export default function Coach() {
         await recorder.current.start();
         setRecording("recording");
       } catch (e) {
-        setError(`Microphone unavailable: ${String(e)}`);
+        setError(`Microphone unavailable: ${errorText(e)}`);
       }
     } else if (recording === "recording" && recorder.current) {
       setRecording("transcribing");
@@ -175,7 +170,7 @@ export default function Coach() {
         const { text } = await api.transcribe(pcm);
         if (text.trim()) void send(text.trim());
       } catch (e) {
-        setError(String(e instanceof Error ? e.message : e));
+        setError(errorText(e));
       } finally {
         recorder.current = null;
         setRecording("idle");
@@ -190,83 +185,100 @@ export default function Coach() {
     void send(null);
   };
 
+  const readLevel = () => recorder.current?.level ?? 0;
+  const busy = streaming !== null;
+
   return (
-    <section className="coach">
-      <header className="card-header">
+    <section className="page coach">
+      <header className="coach-head">
         <div>
-          <h2>AI coach</h2>
-          <span className="muted small">
-            {session ? `${session.type.replace("_", " ")} interview · ` : ""}
-            <Link to={`/interviews/${sessionId}/report`}>back to the report</Link>
-          </span>
+          <Link to={`/interviews/${sessionId}/report`} className="back-link"><Icon name="back" size={16} /> Report</Link>
+          <h1>Debrief</h1>
+          <p className="soft">
+            {session ? `Your coach walks through the ${TYPE_LABEL[session.type].toLowerCase()} interview, one point at a time.` : "Loading…"}
+          </p>
         </div>
-        <div className="row-actions">
-          <button className={`small ${readAloud ? "on-toggle" : ""}`} onClick={toggleReadAloud} aria-pressed={readAloud}>
-            {readAloud ? "🔊 Reading aloud" : "🔈 Read aloud"}
+        <div className="actions">
+          <button type="button" className={`btn ghost small ${readAloud ? "on" : ""}`} onClick={toggleReadAloud} aria-pressed={readAloud}>
+            <Icon name="speaker" size={16} /> {readAloud ? "Reading replies aloud" : "Read replies aloud"}
           </button>
           {messages.length > 0 && (
-            <button className="small" onClick={restart} disabled={streaming !== null}>
-              Start over
+            <button type="button" className="btn ghost small" onClick={restart} disabled={busy}>
+              <Icon name="refresh" size={16} /> Start over
             </button>
           )}
         </div>
       </header>
 
-      {session && !session.report && <p className="warning">The report is not ready yet — come back in a moment.</p>}
+      {session && !session.report && <p className="notice">The report is not ready yet, so the coach has nothing to go on. Come back when the report shows up.</p>}
 
-      <div className="coach-thread">
+      <div className="thread" aria-live="polite">
         {messages.map((m, i) => (
-          <div key={i} className={`coach-msg ${m.role}`}>
+          <div key={i} className={`msg ${m.role}`}>
+            <span className="speaker">{m.role === "assistant" ? "Coach" : "You"}</span>
             {m.role === "assistant" ? (
-              <>
+              <div className="msg-body">
                 <Rich text={m.content} clips={clips} />
-                <button className="link small" onClick={() => void speak(m.content)}>
-                  🔊 Read this
+                <button type="button" className="btn ghost small" onClick={() => void speak(m.content)}>
+                  <Icon name="speaker" size={14} /> Read this
                 </button>
-              </>
+              </div>
             ) : (
-              <p>{m.content}</p>
+              <div className="msg-body"><p>{m.content}</p></div>
             )}
           </div>
         ))}
         {streaming !== null && (
-          <div className="coach-msg assistant">
-            {streaming ? <Rich text={streaming} clips={clips} /> : <p className="muted">Thinking…</p>}
+          <div className="msg assistant">
+            <span className="speaker">Coach</span>
+            <div className="msg-body">
+              {streaming ? <Rich text={streaming} clips={clips} /> : <p className="dots" aria-label="Thinking"><i /><i /><i /></p>}
+            </div>
           </div>
         )}
         <div ref={bottom} />
       </div>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="notice error">{error}</p>}
 
-      <div className="quick-replies">
-        {QUICK_REPLIES.map((q) => (
-          <button key={q} className="small" disabled={streaming !== null || !session?.report} onClick={() => void send(q)}>
-            {q}
+      <div className="composer-bar">
+        <div className="quick-replies">
+          {QUICK_REPLIES.map((q) => (
+            <button key={q} type="button" className="chip-btn" disabled={busy || !session?.report} onClick={() => void send(q)}>
+              {q}
+            </button>
+          ))}
+        </div>
+        <form className="ask" onSubmit={submit}>
+          <button
+            type="button"
+            className={`icon-btn mic ${recording === "recording" ? "recording" : ""}`}
+            onClick={toggleMic}
+            disabled={recording === "transcribing" || busy || !session?.report}
+            aria-label={recording === "recording" ? "Stop recording and send" : "Ask by voice"}
+            title={recording === "recording" ? "Stop and send" : "Ask by voice"}
+          >
+            <Icon name={recording === "recording" ? "stop" : "mic"} />
           </button>
-        ))}
+          {recording === "idle" ? (
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask about any answer, word or mistake…"
+              disabled={busy || !session?.report}
+              aria-label="Your question"
+            />
+          ) : (
+            <div className="ask-recording">
+              <LevelMeter read={readLevel} active={recording === "recording"} />
+              <span className="soft small">{recording === "recording" ? "Listening — click stop to send" : "Transcribing…"}</span>
+            </div>
+          )}
+          <button className="btn primary" type="submit" disabled={!input.trim() || busy}>
+            <Icon name="send" size={16} /> Send
+          </button>
+        </form>
       </div>
-      <form className="coach-input" onSubmit={submit}>
-        <button
-          type="button"
-          className={`mic ${recording === "recording" ? "active" : ""}`}
-          onClick={toggleMic}
-          disabled={recording === "transcribing" || streaming !== null}
-          aria-label={recording === "recording" ? "Stop recording and send" : "Ask by voice"}
-          title={recording === "recording" ? "Stop and send" : "Ask by voice"}
-        >
-          {recording === "recording" ? "■" : recording === "transcribing" ? "…" : "🎤"}
-        </button>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask anything about your interview…"
-          disabled={streaming !== null || !session?.report}
-        />
-        <button className="primary" type="submit" disabled={!input.trim() || streaming !== null}>
-          Send
-        </button>
-      </form>
     </section>
   );
 }

@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type ErrorItem } from "../api/client";
-import ErrorCard, { categoryLabel, KIND_LABEL } from "../components/ErrorCard";
+import ErrorCard, { categoryLabel, categoryPhoneme, KIND_LABEL, KIND_ORDER } from "../components/ErrorCard";
+import { errorText, plural } from "../components/format";
+import Phoneme from "../components/Phoneme";
+import Segmented from "../components/Segmented";
 
 const PERIODS: { value: string; label: string; days: number | null }[] = [
-  { value: "7", label: "Last 7 days", days: 7 },
-  { value: "30", label: "Last 30 days", days: 30 },
-  { value: "90", label: "Last 90 days", days: 90 },
+  { value: "7", label: "7 days", days: 7 },
+  { value: "30", label: "30 days", days: 30 },
+  { value: "90", label: "90 days", days: 90 },
   { value: "all", label: "All time", days: null },
 ];
 const PAGE = 30;
+
+type Facet = { kind: string; category: string; count: number };
 
 export default function Errors() {
   const [params, setParams] = useSearchParams();
@@ -20,7 +25,7 @@ export default function Errors() {
 
   const [items, setItems] = useState<ErrorItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [facets, setFacets] = useState<{ kind: string; category: string; count: number }[]>([]);
+  const [facets, setFacets] = useState<Facet[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +48,7 @@ export default function Errors() {
       setTotal(res.total);
       setFacets(res.categories);
     } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
+      setError(errorText(e));
     } finally {
       setLoading(false);
     }
@@ -62,61 +67,95 @@ export default function Errors() {
     setParams(next, { replace: true });
   };
 
-  const categories = facets.filter((f) => !kind || f.kind === kind);
+  const pickCategory = (f: Facet) => {
+    const next = new URLSearchParams(params);
+    if (category === f.category) next.delete("category");
+    else {
+      next.set("category", f.category);
+      next.set("kind", f.kind);
+    }
+    setParams(next, { replace: true });
+  };
+
+  // facet counts are all-time; they guide the choice, the list below is the filtered truth
+  const kindCounts = new Map<string, number>();
+  for (const f of facets) kindCounts.set(f.kind, (kindCounts.get(f.kind) ?? 0) + f.count);
+  const categories = facets.filter((f) => !kind || f.kind === kind).slice(0, 30);
 
   return (
-    <section className="narrow-wide">
-      <h2>Error explorer</h2>
-      <div className="filters" role="group" aria-label="Filters">
-        <label>
-          Type
-          <select value={kind} onChange={(e) => set("kind", e.target.value)}>
-            <option value="">All types</option>
-            {Object.entries(KIND_LABEL).map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Category
-          <select value={category} onChange={(e) => set("category", e.target.value)}>
-            <option value="">All categories</option>
-            {categories.map((f) => (
-              <option key={f.category} value={f.category}>
-                {categoryLabel(f.category)} ({f.count})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Period
-          <select value={period} onChange={(e) => set("period", e.target.value)}>
-            {PERIODS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="checkbox">
+    <section className="page wide">
+      <header className="page-head">
+        <h1>Errors</h1>
+        <p className="lede">Every mistake found in your answers. Filter by type, sound or rule, and replay your own recording.</p>
+      </header>
+
+      <div className="filter-bar">
+        <div className="kind-chips" role="radiogroup" aria-label="Error type">
+          <button type="button" role="radio" aria-checked={!kind} className="chip-btn" onClick={() => set("kind", "")}>
+            All types
+          </button>
+          {KIND_ORDER.filter((k) => kindCounts.has(k)).map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={kind === k} className="chip-btn" onClick={() => set("kind", k)}>
+              <span className={`kind-dot kind-${k}`} />
+              {KIND_LABEL[k]}
+              <span className="count">{kindCounts.get(k)}</span>
+            </button>
+          ))}
+        </div>
+        <Segmented label="Period" size="small" value={period} options={PERIODS} onChange={(v) => set("period", v)} />
+        <label className="switch">
           <input type="checkbox" checked={showDismissed} onChange={(e) => set("dismissed", e.target.checked ? "1" : "")} />
-          Show “not an error”
+          <span>Include “not an error”</span>
         </label>
       </div>
 
-      {error && <p className="error">{error}</p>}
-      <p className="muted small">{total} error(s)</p>
-      {items.map((e) => (
-        <ErrorCard key={e.id} error={e} />
-      ))}
-      {items.length < total && (
-        <button onClick={() => load(items.length)} disabled={loading}>
-          {loading ? "Loading…" : "Load more"}
-        </button>
-      )}
-      {!loading && total === 0 && <p className="muted">No errors match these filters.</p>}
+      <div className="explorer">
+        <aside className="facets" aria-label="Categories">
+          <h2>Categories</h2>
+          {categories.length === 0 ? (
+            <p className="soft small">No categories yet.</p>
+          ) : (
+            <ul>
+              {categories.map((f) => {
+                const ipa = categoryPhoneme(f.category);
+                return (
+                  <li key={f.category}>
+                    <button type="button" aria-pressed={category === f.category} onClick={() => pickCategory(f)}>
+                      <span className={`kind-dot kind-${f.kind}`} />
+                      <span className="facet-name">{ipa ? <Phoneme ipa={ipa} /> : categoryLabel(f.category)}</span>
+                      <span className="count">{f.count}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </aside>
+
+        <div className="explorer-list">
+          {error && <p className="notice error">Could not load errors: {error}</p>}
+          <p className="soft small result-count">
+            {loading && items.length === 0 ? "Loading…" : plural(total, "error")}
+            {category && (
+              <>
+                {" "}in <strong>{categoryLabel(category)}</strong>{" "}
+                <button type="button" className="btn ghost small" onClick={() => set("category", "")}>Clear</button>
+              </>
+            )}
+          </p>
+          {items.map((e) => (
+            <ErrorCard key={e.id} error={e} />
+          ))}
+          {items.length < total && (
+            <button type="button" className="btn load-more" onClick={() => load(items.length)} disabled={loading}>
+              {loading ? "Loading…" : `Show ${Math.min(PAGE, total - items.length)} more`}
+            </button>
+          )}
+          {!loading && total === 0 && !error && (
+            <p className="empty">{facets.length === 0 ? "No errors yet. They appear here after your first analyzed interview." : "No errors match these filters. Try a longer period."}</p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

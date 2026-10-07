@@ -12,18 +12,19 @@ interface Props {
   domain?: [number, number]; // fixed y range (e.g. rubric 1–5)
   max?: number; // hard ceiling for the padded range (e.g. 100 for percentages)
   lowerIsBetter?: boolean;
+  wide?: boolean; // the big chart on Today
 }
 
 function decimalsFor(range: number): number {
   return range < 1 ? 2 : range < 10 ? 1 : 0;
 }
 
-const W = 320;
-const H = 140;
-const PAD = { top: 12, right: 12, bottom: 22, left: 44 };
+const PAD = { top: 14, right: 14, bottom: 24, left: 46 };
 
 /** Single-series line chart: 2px line, 8px markers, crosshair + tooltip, table view. */
-export default function LineChart({ title, points, suffix = "", domain, max, lowerIsBetter }: Props) {
+export default function LineChart({ title, points, suffix = "", domain, max, lowerIsBetter, wide }: Props) {
+  const W = wide ? 720 : 320;
+  const H = wide ? 220 : 140;
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const tableId = useId();
@@ -33,7 +34,7 @@ export default function LineChart({ title, points, suffix = "", domain, max, low
     return (
       <figure className="chart">
         <figcaption>{title}</figcaption>
-        <p className="muted small">No data yet.</p>
+        <p className="soft small">No data yet.</p>
       </figure>
     );
   }
@@ -79,13 +80,13 @@ export default function LineChart({ title, points, suffix = "", domain, max, low
   const hovered = hover !== null ? points[hover] : null;
 
   return (
-    <figure className="chart">
+    <figure className={`chart ${wide ? "wide" : ""}`}>
       <figcaption>
         {title}
         <span className="chart-latest">
           {format(last)}
           {values.length > 1 && (
-            <span className={`small ${last === first ? "muted" : better ? "trend-down" : "trend-up"}`}>
+            <span className={`small ${last === first ? "soft" : better ? "better" : "worse"}`}>
               {" "}
               {direction} {verdict}
             </span>
@@ -128,13 +129,13 @@ export default function LineChart({ title, points, suffix = "", domain, max, low
         </svg>
         {hovered && hover !== null && (
           <div className="chart-tooltip" style={{ left: `${(x(hover) / W) * 100}%` }} role="status">
-            <span className="muted">{hovered.label}</span>
+            <span className="soft">{hovered.label}</span>
             <strong>{hovered.value === null ? "—" : format(hovered.value)}</strong>
           </div>
         )}
       </div>
       <details className="chart-table">
-        <summary className="small muted">Table</summary>
+        <summary className="small soft">Show as table</summary>
         <table id={tableId}>
           <tbody>
             {points.map((p, i) => (

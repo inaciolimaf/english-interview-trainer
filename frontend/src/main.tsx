@@ -2,6 +2,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource/charis-sil/400.css";
+import "@fontsource/charis-sil/400-italic.css";
+import "@fontsource/charis-sil/700.css";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { api, type ErrorItem } from "../api/client";
 import { playClip } from "./clip";
+import Icon from "./Icon";
+import Phoneme from "./Phoneme";
 
 export const KIND_LABEL: Record<ErrorItem["kind"], string> = {
   pronunciation: "Pronunciation",
@@ -10,14 +12,25 @@ export const KIND_LABEL: Record<ErrorItem["kind"], string> = {
   vocabulary: "Vocabulary",
 };
 
+export const KIND_ORDER: ErrorItem["kind"][] = ["pronunciation", "grammar", "vocabulary", "technical", "fluency"];
+
+/** "pron:phoneme:θ" → "phoneme θ", "gram:verb_tense" → "verb tense". */
 export function categoryLabel(category: string): string {
   if (category === "pron:suspect") return "unclear word";
   const [, ...rest] = category.split(":");
   return rest.join(" ").replaceAll("_", " ");
 }
 
-/** One error: original → corrected, explanation, clip and "Not an error". */
-export default function ErrorCard({ error, onChange }: { error: ErrorItem; onChange?: (e: ErrorItem) => void }) {
+/** The IPA symbol inside a phoneme category, if any ("pron:phoneme:θ" → "θ"). */
+export function categoryPhoneme(category: string): string | null {
+  const m = category.match(/^pron:(?:phoneme|vowel):(.+)$/);
+  return m ? m[1] : null;
+}
+
+const SEVERITY: Record<ErrorItem["severity"], string> = { high: "High impact", medium: "Medium", low: "Minor" };
+
+/** One error: what you said → what to say, why, your clip and "Not an error". */
+export default function ErrorCard({ error, onChange, showKind = true }: { error: ErrorItem; onChange?: (e: ErrorItem) => void; showKind?: boolean }) {
   const [item, setItem] = useState(error);
   const [busy, setBusy] = useState(false);
 
@@ -32,52 +45,66 @@ export default function ErrorCard({ error, onChange }: { error: ErrorItem; onCha
     }
   };
 
+  const phoneme = categoryPhoneme(item.category);
+
   return (
     <article className={`error-card sev-${item.severity} ${item.dismissed ? "dismissed" : ""}`}>
       <header>
-        <span className="fb-kind">
-          {KIND_LABEL[item.kind]} · {categoryLabel(item.category)}
-        </span>
-        <span className={`sev-tag sev-${item.severity}`}>{item.severity}</span>
+        {/* inside a category group the header already names it */}
+        {showKind ? (
+          <span className="error-cat">
+            <span className={`kind-dot kind-${item.kind}`} />
+            {KIND_LABEL[item.kind]} · {phoneme ? <>sound <Phoneme ipa={phoneme} /></> : categoryLabel(item.category)}
+          </span>
+        ) : (
+          <span />
+        )}
+        <span className={`sev sev-${item.severity}`}>{SEVERITY[item.severity]}</span>
       </header>
+
       {item.kind === "pronunciation" ? (
         item.word && (
-          <p className="fb-diff">
-            <strong>{item.word}</strong>
+          <div className="said said-pron">
+            <span className="said-word">{item.word}</span>
             {item.expected_phonemes && (
-              <span className="muted small">
-                {" "}
-                expected /{item.expected_phonemes}/{item.heard_phonemes ? ` · heard /${item.heard_phonemes}/` : ""}
+              <span className="said-ipa">
+                <span>
+                  <small>expected</small> <Phoneme ipa={item.expected_phonemes} />
+                </span>
+                {item.heard_phonemes && (
+                  <span className="heard">
+                    <small>heard</small> <Phoneme ipa={item.heard_phonemes} />
+                  </span>
+                )}
               </span>
             )}
-          </p>
+          </div>
         )
       ) : (
         item.original_text && (
-          <p className="fb-diff">
-            <s>{item.original_text}</s>
-            {item.corrected_text && (
-              <>
-                {" "}→ <strong>{item.corrected_text}</strong>
-              </>
-            )}
-          </p>
+          <div className="said">
+            <p className="said-wrong">{item.original_text}</p>
+            {item.corrected_text && <p className="said-right">{item.corrected_text}</p>}
+          </div>
         )
       )}
-      {item.explanation && <p>{item.explanation}</p>}
-      <div className="row-actions">
+
+      {item.explanation && <p className="error-why">{item.explanation}</p>}
+
+      <footer>
         {item.audio_url && (
-          <button className="small" onClick={() => playClip(item.audio_url!)} aria-label="Play the clip of this error">
-            ▶ Play clip
+          <button type="button" className="btn small" onClick={() => playClip(item.audio_url!)}>
+            <Icon name="play" size={14} /> Your recording
           </button>
         )}
         {item.kind === "pronunciation" && item.category !== "pron:suspect" && !item.dismissed && (
-          <button className="link small" onClick={dismiss} disabled={busy}>
+          <button type="button" className="btn ghost small" onClick={dismiss} disabled={busy}>
             Not an error
           </button>
         )}
-        {item.dismissed && <span className="muted small">Marked as not an error</span>}
-      </div>
+        {item.dismissed && <span className="soft small">Marked as not an error</span>}
+        <span className="soft small error-date">{new Date(item.created_at).toLocaleDateString("en-US")}</span>
+      </footer>
     </article>
   );
 }

@@ -101,6 +101,8 @@ async def coach_reply(
 
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=600)
+    voice: str | None = Field(default=None, pattern=r"^[a-z]{2}_[a-z]+$")  # preview before saving
+    speed: float | None = Field(default=None, ge=0.5, le=2.0)
 
 
 @router.post("/speech/tts")
@@ -109,7 +111,9 @@ async def speak(body: SpeakRequest, request: Request, user: User = Depends(get_c
     settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
     pcm, rate = bytearray(), 24_000
     try:
-        async for meta, chunk in request.app.state.models.tts(body.text, settings.tts_voice, settings.tts_speed):
+        async for meta, chunk in request.app.state.models.tts(
+            body.text, body.voice or settings.tts_voice, body.speed or settings.tts_speed,
+        ):
             rate = meta["sample_rate"]
             pcm.extend(chunk)
     except ModelServerError as exc:

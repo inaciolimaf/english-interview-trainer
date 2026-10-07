@@ -38,11 +38,11 @@ export function stopSpeaking(): void {
 }
 
 /** Read text aloud with the interviewer's voice, chunk by chunk (synthesis overlaps playback). */
-export async function speak(text: string): Promise<void> {
+export async function speak(text: string, opts: { voice?: string; speed?: number } = {}): Promise<void> {
   stopSpeaking();
   const mine = generation;
   const parts = chunks(speakable(text));
-  const audios = parts.map((p) => api.speak(p).then((blob) => new Audio(URL.createObjectURL(blob))));
+  const audios = parts.map((p) => api.speak(p, opts).then((blob) => new Audio(URL.createObjectURL(blob))));
   for (const pending of audios) {
     let audio: HTMLAudioElement;
     try {

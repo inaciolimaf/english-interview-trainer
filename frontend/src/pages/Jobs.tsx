@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, type JobPosting } from "../api/client";
 import Chips from "../components/Chips";
+import ConfirmButton from "../components/ConfirmButton";
+import { errorText } from "../components/format";
+import Icon from "../components/Icon";
+
+const MIN_CHARS = 50;
 
 export default function Jobs() {
   const [jobs, setJobs] = useState<JobPosting[] | null>(null);
@@ -9,9 +15,15 @@ export default function Jobs() {
   const [company, setCompany] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [rawOpen, setRawOpen] = useState<string | null>(null);
 
-  const load = () => api.listJobs().then(setJobs, (e) => setError(String(e)));
+  const load = () =>
+    api.listJobs().then((js) => {
+      setJobs(js);
+      if (js.length === 0) setAdding(true);
+    }, (e) => setError(errorText(e)));
   useEffect(() => {
     load();
   }, []);
@@ -21,106 +33,140 @@ export default function Jobs() {
     setError(null);
     try {
       const result = await action();
-      if (result && result.parse_error) setError(`Saved, but the posting could not be analyzed: ${result.parse_error}`);
+      if (result && result.parse_error) setError(`Saved, but the posting could not be analyzed: ${result.parse_error}. Use Re-read to try again.`);
       await load();
-      return true;
+      return result;
     } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-      return false;
+      setError(errorText(e));
+      return null;
     } finally {
       setBusy(null);
     }
   };
 
-  const save = async () => {
-    const ok = await run("save", () =>
-      api.createJob({ raw_text: text, title: title || undefined, company: company || undefined }),
-    );
-    if (ok) {
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const created = await run("save", () => api.createJob({ raw_text: text, title: title || undefined, company: company || undefined }));
+    if (created) {
       setText("");
       setTitle("");
       setCompany("");
+      setAdding(false);
+      setOpen(created.id);
     }
   };
 
+  const short = text.trim().length > 0 && text.trim().length < MIN_CHARS;
+
   return (
-    <section className="narrow-wide">
-      <h2>Job postings</h2>
-      <p className="muted">Paste a posting to tailor interviews: the stack, seniority and domain come from it.</p>
-
-      <div className="card form">
-        <div className="form-row">
-          <label>
-            Title <span className="muted small">(optional — extracted if empty)</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Senior Backend Engineer" />
-          </label>
-          <label>
-            Company <span className="muted small">(optional)</span>
-            <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme" />
-          </label>
-        </div>
-        <label>
-          Job description
-          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder="Paste the full job posting here…" />
-        </label>
+    <section className="page">
+      <header className="page-head with-action">
         <div>
-          <button className="primary" onClick={save} disabled={busy !== null || text.trim().length < 50}>
-            {busy === "save" ? "Saving and analyzing…" : "Save posting"}
-          </button>
-          {text.trim().length > 0 && text.trim().length < 50 && <span className="muted small"> Paste the full description.</span>}
+          <h1>Jobs</h1>
+          <p className="lede">Paste a job posting to tailor interviews to it: the stack, seniority and domain come from the text.</p>
         </div>
-      </div>
-
-      {error && <p className="error">{error}</p>}
-      {jobs === null && <p className="muted">Loading…</p>}
-      {jobs?.length === 0 && <p className="muted">No job postings yet.</p>}
-
-      {jobs?.map((job) => (
-        <article key={job.id} className="card">
-          <header className="card-header">
-            <div>
-              <h3>{job.title}</h3>
-              <span className="muted small">
-                {[job.company, job.parsed?.domain, job.parsed && job.parsed.seniority !== "unknown" ? job.parsed.seniority : null]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            </div>
-            <span className="row-actions">
-              <button onClick={() => run(`reparse-${job.id}`, () => api.reparseJob(job.id))} disabled={busy !== null}>
-                {busy === `reparse-${job.id}` ? "Re-parsing…" : "Re-parse"}
-              </button>
-              <button className="danger" onClick={() => run(`delete-${job.id}`, () => api.deleteJob(job.id))} disabled={busy !== null}>
-                Delete
-              </button>
-            </span>
-          </header>
-          {job.parsed ? (
-            <dl className="facts">
-              {job.parsed.summary && (
-                <>
-                  <dt>Summary</dt>
-                  <dd>{job.parsed.summary}</dd>
-                </>
-              )}
-              <dt>Required</dt>
-              <dd>
-                <Chips items={job.parsed.required_stack} />
-              </dd>
-              <dt>Nice to have</dt>
-              <dd>
-                <Chips items={job.parsed.nice_to_have} />
-              </dd>
-            </dl>
-          ) : (
-            <p className="muted">Not analyzed — use Re-parse.</p>
-          )}
-          <button className="link" onClick={() => setOpen(open === job.id ? null : job.id)}>
-            {open === job.id ? "Hide original text" : "Show original text"}
+        {!adding && (
+          <button type="button" className="btn primary" onClick={() => setAdding(true)}>
+            <Icon name="plus" size={16} /> Add a job
           </button>
-          {open === job.id && <pre className="raw">{job.raw_text}</pre>}
-        </article>
-      ))}
+        )}
+      </header>
+
+      {adding && (
+        <form className="job-form" onSubmit={save}>
+          <div className="field-row">
+            <label className="field">
+              <span className="field-title">Title <span className="soft">(optional, extracted if empty)</span></span>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Senior Backend Engineer" />
+            </label>
+            <label className="field">
+              <span className="field-title">Company <span className="soft">(optional)</span></span>
+              <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme" />
+            </label>
+          </div>
+          <label className="field">
+            <span className="field-title">Job description</span>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={9} placeholder="Paste the whole posting: responsibilities, requirements, nice-to-haves…" />
+            {short && <span className="soft small">That looks too short — paste the full description.</span>}
+          </label>
+          <div className="actions">
+            <button type="submit" className="btn primary" disabled={busy !== null || text.trim().length < MIN_CHARS}>
+              {busy === "save" ? "Saving and analyzing…" : "Save job"}
+            </button>
+            {(jobs?.length ?? 0) > 0 && (
+              <button type="button" className="btn ghost" onClick={() => setAdding(false)}>Cancel</button>
+            )}
+          </div>
+        </form>
+      )}
+
+      {error && <p className="notice error">{error}</p>}
+      {jobs === null && !error && <p className="soft">Loading…</p>}
+
+      <ul className="job-list">
+        {jobs?.map((job) => {
+          const expanded = open === job.id;
+          const p = job.parsed;
+          return (
+            <li key={job.id} className={`job ${expanded ? "open" : ""}`}>
+              <button type="button" className="job-summary" onClick={() => setOpen(expanded ? null : job.id)} aria-expanded={expanded}>
+                <span className="job-title">
+                  <strong>{job.title}</strong>
+                  <span className="soft small">
+                    {[job.company, p?.domain, p && p.seniority !== "unknown" ? p.seniority : null].filter(Boolean).join(", ") || "No details extracted"}
+                  </span>
+                </span>
+                <span className="job-stack">{p?.required_stack.slice(0, 4).join(" · ")}</span>
+                <Icon name="chevron" size={16} />
+              </button>
+              {expanded && (
+                <div className="job-detail">
+                  {p ? (
+                    <>
+                      {p.summary && <p className="reading">{p.summary}</p>}
+                      <div className="field-row">
+                        <section>
+                          <h3>Required</h3>
+                          <Chips items={p.required_stack} />
+                        </section>
+                        <section>
+                          <h3>Nice to have</h3>
+                          <Chips items={p.nice_to_have} tone="quiet" />
+                        </section>
+                      </div>
+                      {p.responsibilities.length > 0 && (
+                        <section>
+                          <h3>Responsibilities</h3>
+                          <ul className="bullets">
+                            {p.responsibilities.map((r, i) => <li key={i}>{r}</li>)}
+                          </ul>
+                        </section>
+                      )}
+                    </>
+                  ) : (
+                    <p className="soft">This posting was not analyzed. Use Re-read to try again.</p>
+                  )}
+                  <button type="button" className="btn ghost small" onClick={() => setRawOpen(rawOpen === job.id ? null : job.id)} aria-expanded={rawOpen === job.id}>
+                    {rawOpen === job.id ? "Hide the original text" : "Show the original text"}
+                  </button>
+                  {rawOpen === job.id && <pre className="raw">{job.raw_text}</pre>}
+                  <footer className="actions">
+                    <Link to={`/interviews/new?job=${job.id}`} className="btn primary">
+                      <Icon name="mic" size={16} /> Practice for this job
+                    </Link>
+                    <button type="button" className="btn ghost" onClick={() => run(`reparse-${job.id}`, () => api.reparseJob(job.id))} disabled={busy !== null}>
+                      <Icon name="refresh" size={14} /> {busy === `reparse-${job.id}` ? "Re-reading…" : "Re-read"}
+                    </button>
+                    <ConfirmButton className="btn ghost danger" confirm="Delete this job?" onConfirm={() => run(`delete-${job.id}`, () => api.deleteJob(job.id))} disabled={busy !== null}>
+                      <Icon name="trash" size={14} /> Delete
+                    </ConfirmButton>
+                  </footer>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

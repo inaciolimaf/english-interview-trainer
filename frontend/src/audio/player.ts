@@ -1,5 +1,6 @@
 import type { TtsWord } from "../realtime/protocol";
 import { charOffsetAt } from "./charOffset";
+import { analyserLevel } from "./level";
 
 const DUCK_GAIN = 0.2;
 
@@ -25,6 +26,8 @@ export interface PlaybackPosition {
 export class Player {
   private ctx = new AudioContext();
   private gain = this.ctx.createGain();
+  private analyser = this.ctx.createAnalyser();
+  private levelBuf = new Float32Array(512);
   private queue: Scheduled[] = [];
   private pendingMeta = new Map<string, { text: string; words: TtsWord[]; sampleRate: number }>();
   private expected = new Map<number, number>(); // turnId -> n_sentences (after tts_end)
@@ -38,6 +41,13 @@ export class Player {
 
   constructor() {
     this.gain.connect(this.ctx.destination);
+    this.analyser.fftSize = 512;
+    this.gain.connect(this.analyser);
+  }
+
+  /** Loudness of what is playing right now (0–1), for the voice ring. */
+  level(): number {
+    return this.isPlaying ? analyserLevel(this.analyser, this.levelBuf) : 0;
   }
 
   async resume(): Promise<void> {

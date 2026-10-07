@@ -1,5 +1,6 @@
 import type { MicVAD } from "@ricky0123/vad-web";
 import { openMicrophone, PcmCapture } from "../audio/capture";
+import { pcmLevel } from "../audio/level";
 import { Player } from "../audio/player";
 import { startVad } from "../audio/vad";
 import {
@@ -35,6 +36,7 @@ export class InterviewClient {
   private ended = false;
   private attempt = 0;
   private pttDown = false;
+  private micLevel = 0;
 
   constructor(
     private sessionId: string,
@@ -50,6 +52,7 @@ export class InterviewClient {
     this.stream = await openMicrophone();
     this.capture = new PcmCapture();
     await this.capture.start(this.stream, (pcm) => {
+      this.micLevel = pcmLevel(pcm);
       if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(pcm);
     });
     this.vad = await startVad(this.stream, {
@@ -69,6 +72,11 @@ export class InterviewClient {
     this.pttDown = down;
     if (down && this.player.isPlaying) this.player.duck();
     this.send({ type: "ptt", event: down ? "down" : "up" });
+  }
+
+  /** Current loudness (0–1) of your microphone and of the interviewer's voice. */
+  levels(): { mic: number; out: number } {
+    return { mic: this.micLevel, out: this.player.level() };
   }
 
   endSession(): void {
